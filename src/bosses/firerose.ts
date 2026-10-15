@@ -8,7 +8,8 @@ const eyes = new Vector3();
 
 const FIRE: [number, number, number] = [255, 140, 40];
 const ROSE: [number, number, number] = [220, 40, 50];
-const HOVER = 1.2;
+/** How high she floats; just off the ground so she's easy to reach. */
+const HOVER = 0.35;
 const PETALS_PER_RING = 14;
 const BLOOM_WARN = 1.4;
 const HITS_PER_BLINK = 4;
@@ -186,7 +187,7 @@ export class FireRoseBoss implements Boss {
     const charging = this.attack === "spiral" && this.ringsLeft > 0 && this.ringTimer > 0;
     this.spin += dt * (charging ? 9 : this.attack === "spiral" ? 5 : 0.6);
     m.roses.rotation.y = t * (this.attack === "spiral" ? 4 : 1.2);
-    m.body.position.y = HOVER + Math.sin(t * 2) * 0.18;
+    m.body.position.y = HOVER + Math.sin(t * 2) * 0.1;
     m.body.rotation.y = this.attack === "spiral" ? this.spin : 0;
     const flicker = 1 + Math.sin(t * 13) * 0.08 + Math.sin(t * 7.3) * 0.06;
     m.dress.forEach((mat, i) => {

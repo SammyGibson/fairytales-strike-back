@@ -28,7 +28,7 @@ const FACES: Face[] = [
 /** Moonlight: the base light everything gets, in sRGB terms. */
 const AMBIENT: Vec3 = [0.36, 0.4, 0.62];
 /** Linear brightness of glowing blocks; above 1 so the bloom pass picks them up. */
-const EMISSIVE = 1.9;
+const EMISSIVE = 1.5;
 const AO_LEVELS = [1, 0.8, 0.64, 0.5];
 const UV_INSET = 0.01;
 const WATER_TOP = 0.88;

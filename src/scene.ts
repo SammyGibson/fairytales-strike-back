@@ -109,7 +109,8 @@ export class GameScene {
 
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.bloom = new UnrealBloomPass(new Vector2(256, 256), 0.85, 0.55, 0.78);
+    // Gentle glow: only the brightest things bloom, and not too far.
+    this.bloom = new UnrealBloomPass(new Vector2(256, 256), 0.5, 0.4, 0.88);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
   }
