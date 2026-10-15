@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>The Fairytales Strike Back</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 6' shape-rendering='crispEdges'><path fill='%23e0303f' d='M1 0h2v1h1V0h2v1h1v2H6v1H5v1H4v1H3V5H2V4H1V3H0V1h1z'/></svg>" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&family=MedievalSharp&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+
+    <!-- In-game HUD -->
+    <div id="hud" hidden>
+      <div id="hearts" aria-label="Hearts"></div>
+      <div id="boss-bar" hidden>
+        <div class="boss-name">The Rotten Potato</div>
+        <div class="boss-track"><div id="boss-fill"></div></div>
+      </div>
+      <div id="controls-hint">
+        <span><kbd>J</kbd> Swing sword</span>
+        <span><kbd>K</kbd> Hold shield</span>
+        <span><kbd>W A S D</kbd> Move</span>
+        <span><kbd>← →</kbd> Turn</span>
+        <span><kbd>Space</kbd> Jump</span>
+      </div>
+      <div id="crosshair" aria-hidden="true"></div>
+    </div>
+    <div id="hurt-flash" aria-hidden="true"></div>
+    <div id="toast" hidden></div>
+
+    <!-- Main menu: the artwork's own buttons are made clickable -->
+    <section id="menu" class="screen">
+      <div class="menu-art">
+        <img src="/menu.jpg" alt="The Fairytales Strike Back" draggable="false" />
+        <button id="btn-play" class="hotspot" style="left: 39.4%; top: 39.8%; width: 21%; height: 8.9%">Play</button>
+        <button id="btn-continue" class="hotspot" style="left: 40.5%; top: 49.7%; width: 19.1%; height: 8.4%">Continue</button>
+        <button id="btn-options" class="hotspot" style="left: 40.8%; top: 58.8%; width: 18.6%; height: 8.4%">Options</button>
+        <button id="btn-quit" class="hotspot" style="left: 40.8%; top: 67.8%; width: 18.6%; height: 8.5%">Quit</button>
+      </div>
+      <div id="loading">Building the forest…</div>
+    </section>
+
+    <section id="pause" class="overlay" hidden>
+      <div class="panel">
+        <h2>Paused</h2>
+        <div class="buttons">
+          <button id="btn-resume" class="btn primary">⚔️ Keep Playing</button>
+          <button id="btn-pause-options" class="btn">⚙️ Options</button>
+          <button id="btn-pause-help" class="btn">📖 How to Play</button>
+          <button id="btn-mainmenu" class="btn">🏰 Main Menu</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="options" class="overlay" hidden>
+      <div class="panel">
+        <h2>Options</h2>
+        <div class="buttons">
+          <button id="btn-sound" class="btn">🔊 Sound: On</button>
+          <button id="btn-options-back" class="btn primary">✓ Back</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="help" class="overlay" hidden>
+      <div class="panel wide">
+        <h2>How to Play</h2>
+        <p class="lead">Follow the lantern path, beat the Purple Zombies and defeat the Rotten Potato!</p>
+        <div class="help-grid">
+          <div class="help-item"><kbd>J</kbd><span>Swing your sword</span></div>
+          <div class="help-item"><kbd>K</kbd><span>Hold up your shield</span></div>
+          <div class="help-item"><kbd>W A S D</kbd><span>Walk around</span></div>
+          <div class="help-item"><kbd>← →</kbd><span>Turn left and right</span></div>
+          <div class="help-item"><kbd>↑ ↓</kbd><span>Look up and down</span></div>
+          <div class="help-item"><kbd>Space</kbd><span>Jump</span></div>
+          <div class="help-item"><kbd>Esc</kbd><span>Pause</span></div>
+          <div class="help-item"><kbd>Mouse</kbd><span>Optional: click the game to look with the mouse</span></div>
+        </div>
+        <ul class="tips">
+          <li>💜 Purple Zombies go down in <b>2 hits</b>. When their arms go up and their eyes flash, block!</li>
+          <li>🥔 The Rotten Potato waits in her arena at the end. When she lifts a big stone, <b>hold your shield</b> to stop it. She takes <b>10 hits</b>.</li>
+          <li>❤️ Grab floating hearts to heal.</li>
+        </ul>
+        <div class="buttons">
+          <button id="btn-help-back" class="btn primary">✓ Got it!</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="boss-intro" class="overlay clear" hidden>
+      <div class="intro-card">
+        <img src="/potato.jpg" alt="" />
+        <div class="intro-text">
+          <div class="intro-small">A stinky smell fills the air…</div>
+          <div class="intro-big">The Rotten Potato!</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="gameover" class="overlay art" hidden>
+      <img class="bg" src="/zombies.jpg" alt="" />
+      <div class="panel">
+        <h2>Oh no!</h2>
+        <p class="lead">The fairytale villains got you this time. Have another go, hero!</p>
+        <div class="buttons">
+          <button id="btn-retry" class="btn primary">⚔️ Try Again</button>
+          <button id="btn-gameover-menu" class="btn">🏰 Main Menu</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="victory" class="overlay art" hidden>
+      <img class="bg" src="/menu.jpg" alt="" />
+      <div class="panel">
+        <h2 class="gold">Victory!</h2>
+        <p class="lead">You defeated the Rotten Potato and saved Moonlit Hollow!</p>
+        <div class="buttons">
+          <button id="btn-again" class="btn primary">⚔️ Play Again</button>
+          <button id="btn-victory-menu" class="btn">🏰 Main Menu</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="quit" class="overlay art" hidden>
+      <img class="bg" src="/menu.jpg" alt="" />
+      <div class="panel">
+        <h2>Farewell, hero!</h2>
+        <p class="lead">Thanks for playing. You can close this tab, or head back to the adventure.</p>
+        <div class="buttons">
+          <button id="btn-quit-back" class="btn primary">🏰 Back to Menu</button>
+        </div>
+      </div>
+    </section>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
