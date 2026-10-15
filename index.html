@@ -16,7 +16,7 @@
     <div id="hud" hidden>
       <div id="hearts" aria-label="Hearts"></div>
       <div id="boss-bar" hidden>
-        <div class="boss-name">The Rotten Potato</div>
+        <div class="boss-name" id="boss-name"></div>
         <div class="boss-track"><div id="boss-fill"></div></div>
       </div>
       <div id="controls-hint">
@@ -27,8 +27,15 @@
         <span><kbd>Space</kbd> Jump</span>
       </div>
       <div id="crosshair" aria-hidden="true"></div>
+      <div id="weapon" hidden><span id="weapon-name"></span><kbd>F</kbd><span class="weapon-hint">switch</span></div>
     </div>
     <div id="hurt-flash" aria-hidden="true"></div>
+    <div id="reward-card" hidden>
+      <div class="reward-glow" aria-hidden="true">🔥⚔️🔥</div>
+      <div class="reward-small">New item!</div>
+      <div class="reward-big">The Flaming Sword</div>
+      <div class="reward-text">Double damage! Press <kbd>F</kbd> to equip it.</div>
+    </div>
     <div id="toast" hidden></div>
 
     <!-- Main menu: the artwork's own buttons are made clickable -->
@@ -60,6 +67,9 @@
         <h2>Options</h2>
         <div class="buttons">
           <button id="btn-sound" class="btn">🔊 Sound: On</button>
+          <p class="lead small">Jump to a level:</p>
+          <button id="btn-level-1" class="btn">🌲 Level 1: Moonlit Hollow</button>
+          <button id="btn-level-2" class="btn">🏛️ Level 2: The Colosseum</button>
           <button id="btn-options-back" class="btn primary">✓ Back</button>
         </div>
       </div>
@@ -77,12 +87,14 @@
           <div class="help-item"><kbd>↑ ↓</kbd><span>Look up and down</span></div>
           <div class="help-item"><kbd>Space</kbd><span>Jump</span></div>
           <div class="help-item"><kbd>Esc</kbd><span>Pause</span></div>
+          <div class="help-item"><kbd>F</kbd><span>Switch to the Flaming Sword (once you've earned it)</span></div>
           <div class="help-item"><kbd>Mouse</kbd><span>Optional: click the game to look with the mouse</span></div>
         </div>
         <ul class="tips">
           <li>💜 Purple Zombies go down in <b>2 hits</b>. When their arms go up and their eyes flash, block!</li>
           <li>🥔 The Rotten Potato waits in her arena at the end. When she lifts a big stone, <b>hold your shield</b> to stop it. She takes <b>10 hits</b>.</li>
           <li>❤️ Grab floating hearts to heal.</li>
+          <li>⏳ Run out of hearts and the Time Keeper will offer you a second chance.</li>
         </ul>
         <div class="buttons">
           <button id="btn-help-back" class="btn primary">✓ Got it!</button>
@@ -92,22 +104,30 @@
 
     <section id="boss-intro" class="overlay clear" hidden>
       <div class="intro-card">
-        <img src="/potato.jpg" alt="" />
+        <img id="intro-img" src="/potato.jpg" alt="" />
         <div class="intro-text">
-          <div class="intro-small">A stinky smell fills the air…</div>
-          <div class="intro-big">The Rotten Potato!</div>
+          <div class="intro-small" id="intro-small"></div>
+          <div class="intro-big" id="intro-big"></div>
         </div>
       </div>
     </section>
 
-    <section id="gameover" class="overlay art" hidden>
-      <img class="bg" src="/zombies.jpg" alt="" />
-      <div class="panel">
-        <h2>Oh no!</h2>
-        <p class="lead">The fairytale villains got you this time. Have another go, hero!</p>
-        <div class="buttons">
-          <button id="btn-retry" class="btn primary">⚔️ Try Again</button>
-          <button id="btn-gameover-menu" class="btn">🏰 Main Menu</button>
+    <!-- The Time Keeper offers a second chance when you run out of hearts. -->
+    <section id="timekeeper" class="overlay tk" hidden>
+      <div class="tk-clock" aria-hidden="true">
+        <div class="tk-numerals"><span>XII</span><span>III</span><span>VI</span><span>IX</span></div>
+        <div class="tk-hand hour"></div>
+        <div class="tk-hand minute"></div>
+      </div>
+      <div class="dialog" role="dialog" aria-labelledby="tk-name">
+        <img class="portrait" src="/timekeeper.jpg" alt="The Time Keeper" />
+        <div class="dialog-body">
+          <div class="speaker" id="tk-name">The Time Keeper</div>
+          <p id="tk-text"></p>
+          <div class="dialog-buttons">
+            <button id="btn-tk-yes" class="btn primary">⏳ Yes, turn back time!</button>
+            <button id="btn-tk-no" class="btn">🏰 No, main menu</button>
+          </div>
         </div>
       </div>
     </section>
@@ -116,11 +136,20 @@
       <img class="bg" src="/menu.jpg" alt="" />
       <div class="panel">
         <h2 class="gold">Victory!</h2>
-        <p class="lead">You defeated the Rotten Potato and saved Moonlit Hollow!</p>
+        <p class="lead" id="victory-text"></p>
         <div class="buttons">
-          <button id="btn-again" class="btn primary">⚔️ Play Again</button>
+          <button id="btn-next" class="btn primary">🏛️ Next Level</button>
+          <button id="btn-again" class="btn">⚔️ Play Again</button>
           <button id="btn-victory-menu" class="btn">🏰 Main Menu</button>
         </div>
+      </div>
+    </section>
+
+    <section id="level-loading" class="overlay art" hidden>
+      <img class="bg" src="/menu.jpg" alt="" />
+      <div class="panel">
+        <h2 id="level-loading-title"></h2>
+        <p class="lead">Getting the level ready…</p>
       </div>
     </section>
 

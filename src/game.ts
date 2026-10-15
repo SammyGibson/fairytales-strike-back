@@ -1,7 +1,12 @@
 import { type Color, Vector3 } from "three";
 import { B, BLOCKS, isOpaque } from "./blocks";
-import { buildLevel1, type Level } from "./level1";
-import { makeHeart, makePotatoBoss, makeRottenSpud, makeShield, makeStone, makeSword, makeZombie, type Model, type PotatoModel, type ZombieModel } from "./models";
+import type { Boss, BossContext, BossIntro, ProjectileSpec } from "./bosses/boss";
+import { BloodBoxBoss } from "./bosses/bloodbox";
+import { FireRoseBoss } from "./bosses/firerose";
+import { PotatoBoss } from "./bosses/potato";
+import { SamBoss } from "./bosses/sam";
+import { buildLevel, type BossSpawn, type Level, type Reward } from "./levels";
+import { makeFlameSword, makeGiantDoor, makeHeart, makeShield, makeSword, makeZombie, type DoorModel, type Model, type ZombieModel } from "./models";
 import { EYE_HEIGHT, Player, type MoveInput } from "./player";
 import type { SaveData } from "./save";
 import type { GameScene } from "./scene";
@@ -9,9 +14,7 @@ import { sfx } from "./sound";
 import type { World } from "./world";
 
 export const MAX_HEARTS = 6;
-const BOSS_MAX_HP = 10;
 const ZOMBIE_HP = 2;
-const BOSS_RADIUS = 2.5;
 const SWORD_REACH = 2.7;
 const ATTACK_COOLDOWN = 0.38;
 const SWING_TIME = 0.3;
@@ -20,8 +23,10 @@ const CHAR_AMBIENT = [0.46, 0.5, 0.74] as const;
 
 export type GameEvents = {
   health(hearts: number): void;
-  boss(hp: number | null, max: number): void;
-  bossIntro(): void;
+  boss(hp: number | null, max: number, name: string): void;
+  bossIntro(intro: BossIntro): void;
+  /** The player picked up a reward item. */
+  reward(reward: Reward): void;
   hurt(): void;
   toast(message: string): void;
   checkpoint(): void;
@@ -51,23 +56,7 @@ type Zombie = {
   groan: number;
 };
 
-type BossState = "sleep" | "idle" | "windup" | "dying" | "dead";
-
-type Boss = {
-  model: PotatoModel;
-  home: Vector3;
-  pos: Vector3;
-  yaw: number;
-  hp: number;
-  state: BossState;
-  timer: number;
-  hurt: number;
-  stink: number;
-  spuds: { model: Model; pos: Vector3 }[];
-  heldStone: Model;
-};
-
-type Projectile = { model: Model; pos: Vector3; vel: Vector3; deflected: boolean; age: number };
+type Projectile = ProjectileSpec & { deflected: boolean; age: number };
 type Pickup = { id: number; model: Model; pos: Vector3; phase: number };
 
 const tmp = new Vector3();
@@ -99,7 +88,16 @@ export class Game {
   over = false;
 
   private zombies: Zombie[] = [];
-  private boss!: Boss;
+  private boss: Boss;
+  /** How many bosses in this level's line-up have been beaten. */
+  private bossIndex = 0;
+  private readonly bossCtx: BossContext;
+  private readonly door: DoorModel | null = null;
+  private doorOpen = 0;
+  private doorTarget = 0;
+  /** Counts down to the next boss coming through the door (-1 when idle). */
+  private nextBossTimer = -1;
+  private readonly hintsShown = new Set<string>();
   private projectiles: Projectile[] = [];
   private pickups: Pickup[] = [];
   private heartsTaken = new Set<number>();
@@ -114,17 +112,24 @@ export class Game {
   private wonTimer = -1;
 
   private readonly sword: Model;
+  private readonly flameSword: Model;
   private readonly shield: Model;
+  /** Whether the Flaming Sword is in hand (once unlocked). */
+  private flameEquipped = false;
+  private emberTimer = 0;
+  private rewardPickup: { model: Model; pos: Vector3; reward: Reward; phase: number } | null = null;
 
-  constructor(private readonly gs: GameScene, private readonly events: GameEvents) {
-    this.level = buildLevel1();
+  constructor(private readonly gs: GameScene, private readonly events: GameEvents, levelId: number) {
+    this.level = buildLevel(levelId);
     this.world = this.level.world;
     this.player = new Player(this.world);
     gs.setWorld(this.world);
 
     this.sword = makeSword();
+    this.flameSword = makeFlameSword(true);
+    this.flameSword.group.visible = false;
     this.shield = makeShield();
-    gs.camera.add(this.sword.group, this.shield.group);
+    gs.camera.add(this.sword.group, this.flameSword.group, this.shield.group);
 
     this.level.zombies.forEach((p, id) => {
       const model = makeZombie();
@@ -133,27 +138,148 @@ export class Game {
       this.zombies.push({ id, model, home, pos: home.clone(), yaw: 0, hp: ZOMBIE_HP, state: "idle", timer: 0, hurt: 0, knock: new Vector3(), walk: 0, groan: Math.random() * 4 });
     });
 
-    const b = this.level.boss;
-    const bossModel = makePotatoBoss();
-    const home = new Vector3(b.x, this.groundAt(b.x, 28, b.z), b.z);
-    gs.scene.add(bossModel.group);
-    const spuds = [0, 1, 2, 3, 4, 5].map((i) => {
-      const a = (i / 6) * Math.PI * 2 + 0.4;
-      const pos = new Vector3(home.x + Math.cos(a) * 3.6, 0, home.z + Math.sin(a) * 3.2);
-      pos.y = this.groundAt(pos.x, home.y + 2, pos.z);
-      const model = makeRottenSpud();
-      model.group.position.copy(pos);
-      model.group.rotation.y = a * 3;
-      gs.scene.add(model.group);
-      return { model, pos };
-    });
-    // The stone she lifts over her head before each throw, so players see it coming.
-    const heldStone = makeStone();
-    heldStone.group.position.set(0, 5.4, 0.3);
-    heldStone.group.scale.setScalar(1.3);
-    heldStone.group.visible = false;
-    bossModel.body.add(heldStone.group);
-    this.boss = { model: bossModel, home, pos: home.clone(), yaw: 0, hp: BOSS_MAX_HP, state: "sleep", timer: 0, hurt: 0, stink: 0, spuds, heldStone };
+    const ctx: BossContext = {
+      arena: this.level.arena,
+      gs,
+      player: this.player,
+      playerEye: () => this.playerEye(),
+      canSee: (from, to) => this.canSee(from, to),
+      inArena: () => {
+        const a = this.level.arena;
+        const p = this.player.pos;
+        return Math.hypot((p.x - a.x) / a.rx, (p.z - a.z) / a.rz) < 1;
+      },
+      isOver: () => this.over,
+      groundAt: (x, y, z) => this.groundAt(x, y, z),
+      tint: (model, pos, flash) => this.tint(model, pos, flash),
+      launch: (spec) => {
+        spec.model.group.position.copy(spec.pos);
+        gs.scene.add(spec.model.group);
+        this.projectiles.push({ ...spec, deflected: false, age: 0 });
+      },
+      clearProjectiles: () => this.clearProjectiles(),
+      hurtPlayer: (from, blockable) => this.hurtPlayer(from, blockable),
+      facing: (target) => this.facing(target),
+      hint: (key, message) => {
+        if (this.hintsShown.has(key)) return;
+        this.hintsShown.add(key);
+        events.toast(message);
+      },
+      awoke: (intro) => {
+        events.bossIntro(intro);
+        events.boss(this.boss.hp, this.boss.maxHp, this.boss.name);
+      },
+      healthChanged: () => events.boss(this.boss.hp, this.boss.maxHp, this.boss.name),
+      defeated: () => {
+        events.boss(null, this.boss.maxHp, this.boss.name);
+        sfx.victory();
+        this.bossIndex++;
+        this.events.checkpoint();
+        const spawn = this.level.bosses[this.bossIndex - 1];
+        if (this.bossIndex < this.level.bosses.length) this.nextBossTimer = 2.2;
+        else if (spawn?.reward) this.dropReward(spawn.reward, this.boss.pos);
+        else this.wonTimer = 1.8;
+      },
+    };
+    this.bossCtx = ctx;
+    this.boss = this.makeBoss(this.level.bosses[0]!);
+
+    const d = this.level.door;
+    if (d) {
+      this.door = makeGiantDoor(d.width, d.height);
+      this.door.group.position.set(d.x, this.groundAt(d.x, 28, d.z + 1), d.z);
+      gs.scene.add(this.door.group);
+    }
+  }
+
+  private makeBoss(spawn: BossSpawn): Boss {
+    const home = new Vector3(spawn.x, this.groundAt(spawn.x, 28, spawn.z), spawn.z);
+    switch (spawn.kind) {
+      case "sam":
+        return new SamBoss(this.bossCtx, home);
+      case "bloodbox":
+        return new BloodBoxBoss(this.bossCtx, home);
+      case "potato":
+        return new PotatoBoss(this.bossCtx, home);
+      case "firerose":
+        return new FireRoseBoss(this.bossCtx, home);
+    }
+  }
+
+  /** Leaves a reward item floating where the last boss fell; the level ends once it's picked up. */
+  private dropReward(reward: Reward, at: Vector3): void {
+    const model = makeFlameSword(false);
+    model.group.scale.setScalar(2.2);
+    const pos = new Vector3(at.x, this.groundAt(at.x, at.y + 1, at.z), at.z);
+    model.group.position.copy(pos);
+    this.gs.scene.add(model.group);
+    this.rewardPickup = { model, pos, reward, phase: 0 };
+    this.events.toast("Fire Rose dropped something! Go and grab it!");
+  }
+
+  private updateReward(dt: number): void {
+    const r = this.rewardPickup;
+    if (!r) return;
+    r.phase += dt;
+    r.model.group.position.set(r.pos.x, r.pos.y + 1 + Math.sin(r.phase * 2.5) * 0.2, r.pos.z);
+    r.model.group.rotation.set(0, r.phase * 1.5, 0.3);
+    if (Math.random() < dt * 20) this.gs.burst(tmp.copy(r.model.group.position).setY(r.pos.y + 1 + Math.random() * 1.6), [255, 140, 40], { count: 1, speed: 0.6, up: 1.5, gravity: -1, life: 0.8, size: 0.1 });
+    if (this.flatDistance(r.pos, this.player.pos) < 1.6 && !this.over) {
+      this.gs.scene.remove(r.model.group);
+      this.rewardPickup = null;
+      sfx.reward();
+      this.gs.burst(tmp.copy(r.pos).setY(r.pos.y + 1.2), [255, 180, 60], { count: 40, speed: 6, up: 5, size: 0.16 });
+      this.events.reward(r.reward);
+      this.wonTimer = 4;
+    }
+  }
+
+  /** Lets the player use the Flaming Sword (once they've earned it). */
+  setFlameSword(equipped: boolean): void {
+    this.flameEquipped = equipped;
+    this.sword.group.visible = !equipped;
+    this.flameSword.group.visible = equipped;
+  }
+
+  private swordPower(): number {
+    return this.flameEquipped ? 2 : 1;
+  }
+
+  /** Switches to boss number `index` in the line-up, waiting at its home spot. */
+  private useBoss(index: number): void {
+    this.boss.dispose();
+    this.bossIndex = index;
+    const spawn = this.level.bosses[Math.min(index, this.level.bosses.length - 1)]!;
+    this.boss = this.makeBoss(spawn);
+    if (index >= this.level.bosses.length) this.boss.state = "dead";
+    // The door stays open once a door boss has come out.
+    this.doorTarget = this.doorOpen = this.level.bosses.slice(0, index + 1).some((b) => b.fromDoor) ? 1 : 0;
+  }
+
+  /** The next boss in the line-up comes out of the giant door. */
+  private releaseNextBoss(): void {
+    this.useBoss(this.bossIndex);
+    this.doorOpen = 0;
+    this.doorTarget = 1;
+    const inside = this.level.door?.inside;
+    if (inside && this.boss.emerge) {
+      // Search for the tunnel floor from door height, not from above the roof.
+      const floorY = this.groundAt(inside.x, this.door?.group.position.y ?? 28, inside.z);
+      this.boss.emerge(new Vector3(inside.x, floorY, inside.z));
+    }
+    sfx.door();
+    this.events.toast("The giant door is opening!");
+  }
+
+  /** Removes everything this level added to the scene. */
+  dispose(): void {
+    for (const z of this.zombies) this.gs.scene.remove(z.model.group);
+    for (const p of this.pickups) this.gs.scene.remove(p.model.group);
+    this.clearProjectiles();
+    this.boss.dispose();
+    if (this.door) this.gs.scene.remove(this.door.group);
+    if (this.rewardPickup) this.gs.scene.remove(this.rewardPickup.model.group);
+    this.gs.camera.remove(this.sword.group, this.flameSword.group, this.shield.group);
   }
 
   /** Starts fresh, or resumes from a save. */
@@ -172,7 +298,10 @@ export class Game {
         z.model.group.visible = false;
       }
     }
-    this.resetBoss();
+    this.nextBossTimer = -1;
+    if (this.rewardPickup) this.gs.scene.remove(this.rewardPickup.model.group);
+    this.rewardPickup = null;
+    this.useBoss(Math.min(save?.bossesDefeated ?? 0, this.level.bosses.length));
     this.clearProjectiles();
     for (const p of this.pickups) this.gs.scene.remove(p.model.group);
     this.pickups = [];
@@ -181,7 +310,7 @@ export class Game {
     });
     this.placePlayerAtCheckpoint();
     this.events.health(this.hearts);
-    this.events.boss(null, BOSS_MAX_HP);
+    this.events.boss(null, this.boss.maxHp, this.boss.name);
   }
 
   /** After being defeated: back to the last checkpoint with full hearts. */
@@ -189,21 +318,28 @@ export class Game {
     this.over = false;
     this.hearts = MAX_HEARTS;
     for (const z of this.zombies) if (z.state !== "dead") this.resetZombie(z);
-    if (this.boss.state !== "dead") this.resetBoss();
+    if (this.nextBossTimer >= 0 || (this.boss.state === "dead" && this.bossIndex < this.level.bosses.length)) {
+      // Defeated while the next boss was on its way: it waits in the arena instead.
+      this.nextBossTimer = -1;
+      this.useBoss(this.bossIndex);
+    } else if (this.boss.state !== "dead") {
+      this.boss.reset();
+    }
     this.clearProjectiles();
     this.placePlayerAtCheckpoint();
     this.invulnerable = 1.5;
     this.events.health(this.hearts);
-    this.events.boss(null, BOSS_MAX_HP);
+    this.events.boss(null, this.boss.maxHp, this.boss.name);
   }
 
   saveData(): SaveData {
     return {
-      level: 1,
+      level: this.level.id,
       checkpoint: this.checkpoint,
       hearts: this.hearts,
       defeatedZombies: this.zombies.filter((z) => z.state === "dead" || z.state === "dying").map((z) => z.id),
       heartsTaken: [...this.heartsTaken],
+      bossesDefeated: this.bossIndex,
     };
   }
 
@@ -221,17 +357,6 @@ export class Game {
     z.knock.set(0, 0, 0);
     z.model.group.visible = true;
     z.model.group.rotation.set(0, 0, 0);
-  }
-
-  private resetBoss(): void {
-    const b = this.boss;
-    b.pos.copy(b.home);
-    b.hp = BOSS_MAX_HP;
-    b.state = "sleep";
-    b.timer = 0;
-    b.hurt = 0;
-    b.model.group.visible = true;
-    b.model.group.scale.setScalar(1);
   }
 
   private clearProjectiles(): void {
@@ -302,7 +427,7 @@ export class Game {
       const d = this.flatDistance(z.pos, this.player.pos);
       if (d > SWORD_REACH || (d > 1.1 && this.facing(z.pos) < 0.45)) continue;
       hitSomething = true;
-      z.hp--;
+      z.hp -= this.swordPower();
       z.hurt = 0.22;
       tmp.set(z.pos.x - this.player.pos.x, 0, z.pos.z - this.player.pos.z).normalize();
       z.knock.copy(tmp).multiplyScalar(4);
@@ -317,31 +442,23 @@ export class Game {
       }
     }
 
-    const b = this.boss;
-    if (b.state === "idle" || b.state === "windup") {
-      const d = this.flatDistance(b.pos, this.player.pos) - BOSS_RADIUS;
-      if (d < SWORD_REACH - 0.3 && this.facing(b.pos) > 0.3) {
-        hitSomething = true;
-        b.hp--;
-        b.hurt = 0.25;
-        sfx.bossHurt();
-        this.gs.burst(tmp.copy(this.player.pos).lerp(b.pos, 0.6).setY(b.pos.y + 1.8), [206, 170, 108], { count: 14, speed: 5 });
-        this.events.boss(b.hp, BOSS_MAX_HP);
-        if (b.hp <= 0) {
-          b.state = "dying";
-          b.timer = 1.6;
-          sfx.roar();
-          this.clearProjectiles();
-        }
-      }
-    }
+    const reaches = (pos: Vector3, radius: number) => {
+      const d = this.flatDistance(pos, this.player.pos) - radius;
+      return d < SWORD_REACH - 0.3 && (d < 0.8 || this.facing(pos) > 0.3) && Math.abs(pos.y - this.player.pos.y) < 3;
+    };
+    if (this.boss.swordHit(reaches, this.swordPower())) hitSomething = true;
     if (hitSomething) sfx.hit();
+    if (hitSomething && this.flameEquipped) {
+      // A burst of flame in front of the player.
+      tmp.set(this.player.pos.x - Math.sin(this.player.yaw) * 1.8, this.player.pos.y + 1.2, this.player.pos.z - Math.cos(this.player.yaw) * 1.8);
+      this.gs.burst(tmp, [255, 140, 40], { count: 16, speed: 4, up: 3, gravity: -1, size: 0.14 });
+    }
   }
 
   /** Damages the player unless they're blocking towards the attacker. Returns true if blocked. */
-  private hurtPlayer(from: Vector3): boolean {
+  private hurtPlayer(from: Vector3, blockable = true): boolean {
     if (this.over || this.invulnerable > 0) return false;
-    if (this.blocking && this.facing(from) > 0.25) {
+    if (blockable && this.blocking && this.facing(from) > 0.25) {
       sfx.block();
       this.gs.burst(tmp.copy(this.player.pos).lerp(from, 0.25).setY(this.player.pos.y + 1.2), [255, 236, 170], { count: 8, speed: 5, size: 0.08, gravity: 6 });
       return true;
@@ -372,6 +489,8 @@ export class Game {
     this.updateCheckpoints();
     for (const z of this.zombies) this.updateZombie(z, dt);
     this.updateBoss(dt);
+    this.updateDoor(dt);
+    this.updateReward(dt);
     this.updateProjectiles(dt);
     this.updatePickups(dt);
     this.updateViewModel(dt, input.move);
@@ -529,97 +648,37 @@ export class Game {
     else pos.y += (g - pos.y) * Math.min(1, dt * 14);
   }
 
+  private updateDoor(dt: number): void {
+    if (this.nextBossTimer >= 0) {
+      this.nextBossTimer -= dt;
+      if (this.nextBossTimer < 0) this.releaseNextBoss();
+    }
+    if (!this.door) return;
+    this.doorOpen += Math.sign(this.doorTarget - this.doorOpen) * Math.min(Math.abs(this.doorTarget - this.doorOpen), dt * 0.6);
+    // A closed door blocks the way into the tunnel behind it.
+    const d = this.level.door!;
+    const p = this.player.pos;
+    if (this.doorOpen < 0.9 && Math.abs(p.x - d.x) < d.width / 2 + 0.3 && p.z < d.z + 0.6 && p.z > d.z - 3) p.z = d.z + 0.6;
+    const angle = this.doorOpen * 1.75;
+    this.door.left.rotation.y = angle;
+    this.door.right.rotation.y = -angle;
+    this.tint(this.door, this.door.group.position, 0);
+  }
+
   private updateBoss(dt: number): void {
     const b = this.boss;
-    const m = b.model;
-    const p = this.player.pos;
+    b.update(dt);
     if (b.state === "dead") return;
-    b.hurt = Math.max(0, b.hurt - dt);
-    b.timer -= dt;
+    // Keep the player from walking inside the boss.
+    const p = this.player.pos;
     const dist = this.flatDistance(b.pos, p);
-
-    // Stink clouds rising from the boss and her little rotten potatoes.
-    b.stink -= dt;
-    if (b.stink <= 0) {
-      b.stink = 0.09;
-      const src = Math.random() < 0.4 ? tmp.copy(b.pos).setY(b.pos.y + 4.6) : tmp.copy(b.spuds[Math.floor(Math.random() * b.spuds.length)]!.pos).setY(b.pos.y + 0.6);
-      this.gs.burst(src, [190, 214, 70], { count: 1, speed: 0.6, up: 1.4, gravity: -0.6, life: 1.8, size: 0.22, spread: 0.5 });
-    }
-
-    if (b.state === "dying") {
-      const t = Math.max(0, b.timer / 1.6);
-      m.group.scale.set(1 + (1 - t) * 0.25, t, 1 + (1 - t) * 0.25);
-      if (Math.random() < 0.5) this.gs.burst(tmp.copy(b.pos).setY(b.pos.y + 2 * t + 0.5), [206, 170, 108], { count: 3, speed: 7, up: 5, size: 0.24 });
-      if (b.timer <= 0) {
-        b.state = "dead";
-        m.group.visible = false;
-        this.gs.burst(tmp.copy(b.pos).setY(b.pos.y + 1), [200, 220, 80], { count: 60, speed: 9, up: 6, size: 0.25 });
-        this.events.boss(null, BOSS_MAX_HP);
-        sfx.victory();
-        this.wonTimer = 1.8;
-      }
-      this.tint(m, b.pos, 0);
-      return;
-    }
-
-    // She only wakes once you're inside her arena, and only throws while she can see you.
-    const arena = this.level.arena;
-    const inArena = Math.hypot(p.x - arena.x, p.z - arena.z) < arena.r + 1;
-    const sees = this.canSee(headTmp.set(b.pos.x, b.pos.y + 3.4, b.pos.z), this.playerEye());
-    if (!this.over) {
-      if (b.state === "sleep" && inArena && sees) {
-        b.state = "idle";
-        b.timer = 2.8;
-        sfx.roar();
-        this.events.bossIntro();
-        this.events.boss(b.hp, BOSS_MAX_HP);
-      } else if (b.state === "idle" && b.timer <= 0) {
-        if (inArena && sees) {
-          b.state = "windup";
-          b.timer = 0.9;
-        } else {
-          b.timer = 0.5;
-        }
-      } else if (b.state === "windup" && b.timer <= 0) {
-        this.throwStone();
-        b.state = "idle";
-        b.timer = b.hp <= 5 ? 1.9 : 2.6;
-      }
-    }
-    b.heldStone.group.visible = b.state === "windup";
-    if (b.state === "windup") this.tint(b.heldStone, b.pos, 0);
-
-    if (b.state !== "sleep") b.yaw = lerpAngle(b.yaw, angleTo(b.pos, p), Math.min(1, dt * 2.5));
-
-    // Keep the player from walking inside her.
-    if (dist < BOSS_RADIUS + 0.4 && dist > 0.01) {
-      const push = BOSS_RADIUS + 0.4 - dist;
+    // A bit of extra space so a big boss never fills the whole screen; the sword still reaches.
+    const keepOut = b.radius + 1.1;
+    if (dist < keepOut && dist > 0.01) {
+      const push = keepOut - dist;
       p.x += ((p.x - b.pos.x) / dist) * push;
       p.z += ((p.z - b.pos.z) / dist) * push;
     }
-
-    const breathe = Math.sin(performance.now() / 400) * 0.03;
-    m.body.scale.set(1 - breathe, 1 + breathe, 1 - breathe);
-    m.body.rotation.x = b.state === "windup" ? -0.2 * Math.min(1, (0.9 - b.timer) / 0.6) : Math.max(0, m.body.rotation.x - dt * 2);
-    m.group.position.copy(b.pos);
-    m.group.rotation.y = b.yaw;
-    this.tint(m, b.pos, b.hurt);
-    for (const s of b.spuds) this.tint(s.model, s.pos, 0);
-  }
-
-  private throwStone(): void {
-    const b = this.boss;
-    const start = new Vector3(b.pos.x + Math.sin(b.yaw) * 1.2, b.pos.y + 5.2, b.pos.z + Math.cos(b.yaw) * 1.2);
-    const target = new Vector3(this.player.pos.x, this.player.pos.y + 1.1, this.player.pos.z);
-    const T = Math.min(1.8, Math.max(1, start.distanceTo(target) / 8));
-    const g = 14;
-    const vel = new Vector3((target.x - start.x) / T, (target.y - start.y) / T + 0.5 * g * T, (target.z - start.z) / T);
-    const model = makeStone();
-    model.group.position.copy(start);
-    this.gs.scene.add(model.group);
-    this.projectiles.push({ model, pos: start, vel, deflected: false, age: 0 });
-    b.model.body.rotation.x = 0.25;
-    sfx.throw();
   }
 
   private updateProjectiles(dt: number): void {
@@ -628,18 +687,20 @@ export class Game {
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const pr = this.projectiles[i]!;
       pr.age += dt;
-      pr.vel.y -= 14 * dt;
+      pr.vel.y -= pr.gravity * dt;
       pr.pos.addScaledVector(pr.vel, dt);
       pr.model.group.position.copy(pr.pos);
-      pr.model.group.rotation.x += dt * 5;
-      pr.model.group.rotation.z += dt * 3;
+      pr.model.group.rotation.x += dt * pr.spin;
+      pr.model.group.rotation.z += dt * pr.spin * 0.6;
       this.tint(pr.model, pr.pos, 0);
-      if (Math.random() < 0.3) this.gs.burst(pr.pos, [140, 138, 146], { count: 1, speed: 0.4, up: 0.2, gravity: 2, life: 0.4, size: 0.1 });
+      if (Math.random() < 0.5) this.gs.burst(pr.pos, pr.trail, { count: 1, speed: 0.4, up: 0.2, gravity: pr.gravity > 0 ? 2 : -2, life: 0.4, size: 0.1 });
 
       let remove = false;
-      if (!pr.deflected && pr.pos.distanceTo(chestPos) < 1) {
+      if (!pr.deflected && pr.pos.distanceTo(chestPos) < pr.radius) {
         if (this.hurtPlayer(pr.pos)) {
+          // Blocked: it bounces off the shield and drops.
           pr.deflected = true;
+          pr.gravity = Math.max(pr.gravity, 12);
           pr.vel.set(-pr.vel.x * 0.35, 4, -pr.vel.z * 0.35);
         } else {
           remove = true;
@@ -648,7 +709,7 @@ export class Game {
       if (this.world.isSolid(Math.floor(pr.pos.x), Math.floor(pr.pos.y), Math.floor(pr.pos.z)) || pr.age > 5) remove = true;
       if (remove) {
         sfx.splat();
-        this.gs.burst(pr.pos, [150, 148, 156], { count: 16, speed: 5, up: 4, size: 0.18 });
+        this.gs.burst(pr.pos, pr.splat, { count: 16, speed: 5, up: 4, size: 0.18 });
         this.gs.scene.remove(pr.model.group);
         this.projectiles.splice(i, 1);
       }
@@ -681,9 +742,18 @@ export class Game {
     const sway = moving ? Math.cos(this.walkPhase * 0.5) * 0.015 : 0;
 
     const s = this.swing > 0 ? Math.sin((1 - this.swing / SWING_TIME) * Math.PI) : 0;
-    const sw = this.sword.group;
-    sw.position.set(0.4 - 0.32 * s + sway, -0.4 + bob + 0.08 * s, -0.72);
-    sw.rotation.set(-0.55 - 1.0 * s, -0.15, -0.3 + 1.25 * s);
+    for (const sw of [this.sword.group, this.flameSword.group]) {
+      sw.position.set(0.4 - 0.32 * s + sway, -0.4 + bob + 0.08 * s, -0.72);
+      sw.rotation.set(-0.55 - 1.0 * s, -0.15, -0.3 + 1.25 * s);
+    }
+    // Embers trailing off the Flaming Sword.
+    this.emberTimer -= dt;
+    if (this.flameEquipped && this.emberTimer <= 0) {
+      this.emberTimer = this.swing > 0 ? 0.015 : 0.06;
+      const ember = this.gs.camera.localToWorld(tmp.set(0.38 - 0.3 * s + (Math.random() - 0.5) * 0.08, -0.05 + Math.random() * 0.3, -1));
+      this.gs.burst(ember, Math.random() < 0.5 ? [255, 140, 40] : [255, 220, 90], { count: 1, speed: 0.15, up: 0.3, gravity: -0.4, life: 0.35, size: 0.018, spread: 0.03 });
+    }
+    const sw = this.flameEquipped ? this.flameSword.group : this.sword.group;
 
     this.shieldRaise += ((this.blocking ? 1 : 0) - this.shieldRaise) * Math.min(1, dt * 14);
     const r = this.shieldRaise;
@@ -694,9 +764,11 @@ export class Game {
     const eye = this.player.eye(tmp);
     eye.y -= EYE_HEIGHT;
     this.tint(this.sword, eye, 0);
+    this.tint(this.flameSword, eye, 0);
     this.tint(this.shield, eye, 0);
     // Flicker while invulnerable after a hit.
     const visible = this.invulnerable <= 0 || Math.floor(this.invulnerable * 12) % 2 === 0;
     sw.visible = sh.visible = visible || this.over;
+    (this.flameEquipped ? this.sword.group : this.flameSword.group).visible = false;
   }
 }

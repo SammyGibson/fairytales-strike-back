@@ -1,23 +1,11 @@
 import { B } from "./blocks";
 import { fbm, hash2 } from "./noise";
+import type { Level } from "./levels";
 import { World } from "./world";
 
 // Level 1: "Moonlit Hollow". The player starts in a village at the south end,
 // follows a lantern-lit path north through a dark pine forest, and meets the
 // Rotten Potato in a clearing beside a lake. A castle looms on the cliffs beyond.
-
-export type Point = { x: number; z: number };
-export type Checkpoint = { x: number; z: number; triggerZ: number };
-
-export type Level = {
-  world: World;
-  name: string;
-  checkpoints: Checkpoint[];
-  zombies: Point[];
-  boss: Point;
-  arena: { x: number; z: number; r: number };
-  hearts: Point[];
-};
 
 const SEED = 4242;
 const GROUND = 12;
@@ -107,6 +95,7 @@ export function buildLevel1(): Level {
   world.computeLighting();
 
   return {
+    id: 1,
     world,
     name: "Moonlit Hollow",
     checkpoints: [
@@ -123,8 +112,8 @@ export function buildLevel1(): Level {
       { x: pathX(57) - 2.5, z: 57 },
       { x: pathX(55) + 2.5, z: 55 },
     ],
-    boss: { x: ARENA.x + 0.5, z: ARENA.z - 5 },
-    arena: ARENA,
+    bosses: [{ x: ARENA.x + 0.5, z: ARENA.z - 5, kind: "potato" }],
+    arena: { x: ARENA.x, z: ARENA.z, rx: ARENA.r + 1, rz: ARENA.r + 1 },
     hearts: [
       { x: pathX(74) + 1, z: 73 },
       { x: pathX(60) - 1, z: 60 },

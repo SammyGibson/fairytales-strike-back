@@ -24,6 +24,11 @@ export const B = {
   MOSSY: 21,
   SHROOM_PURPLE: 22,
   SHROOM_CYAN: 23,
+  SAND: 24,
+  SANDSTONE: 25,
+  SANDBRICK: 26,
+  PILLAR: 27,
+  TERRACOTTA: 28,
 } as const;
 
 // Tile indices into the texture atlas (see textures.ts).
@@ -51,6 +56,11 @@ export const T = {
   BANNER: 20,
   MOSSY: 21,
   FENCE: 22,
+  SAND: 23,
+  SANDSTONE: 24,
+  SANDBRICK: 25,
+  PILLAR: 26,
+  TERRACOTTA: 27,
 } as const;
 
 /** Non-cube blocks are drawn as one or more smaller boxes. */
@@ -113,7 +123,7 @@ BLOCKS[B.STEM] = block("Mushroom stem", T.STEM);
 BLOCKS[B.CAP_PURPLE] = block("Glowcap", T.CAP_PURPLE, { emissive: true, light: PURPLE });
 BLOCKS[B.CAP_CYAN] = block("Bluecap", T.CAP_CYAN, { emissive: true, light: CYAN });
 BLOCKS[B.CRYSTAL] = block("Crystal", T.CRYSTAL, { emissive: true, light: { ...PURPLE, radius: 7 } });
-BLOCKS[B.LANTERN] = block("Lantern", T.LANTERN, { shape: "lantern", transparent: true, emissive: true, light: WARM });
+BLOCKS[B.LANTERN] = block("Lantern", T.LANTERN, { shape: "lantern", transparent: true, solid: false, emissive: true, light: WARM });
 BLOCKS[B.FENCE] = block("Fence", T.FENCE, { shape: "fence", transparent: true });
 BLOCKS[B.BANNER] = block("Banner", T.BANNER, { shape: "banner", transparent: true, solid: false });
 BLOCKS[B.MOSSY] = block("Mossy stone", T.MOSSY);
@@ -131,6 +141,12 @@ BLOCKS[B.SHROOM_CYAN] = block("Little bluecap", T.CAP_CYAN, {
   emissive: true,
   light: { ...CYAN, radius: 4 },
 });
+
+BLOCKS[B.SAND] = block("Sand", T.SAND);
+BLOCKS[B.SANDSTONE] = block("Sandstone", T.SANDSTONE);
+BLOCKS[B.SANDBRICK] = block("Sandstone brick", T.SANDBRICK);
+BLOCKS[B.PILLAR] = block("Column", T.PILLAR, { top: T.SANDSTONE, bottom: T.SANDSTONE });
+BLOCKS[B.TERRACOTTA] = block("Terracotta", T.TERRACOTTA);
 
 /** Full cubes that hide what's behind them and block light. */
 export function isOpaque(id: number): boolean {

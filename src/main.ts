@@ -1,5 +1,7 @@
 import "./style.css";
+import type { BossIntro } from "./bosses/boss";
 import { Game, MAX_HEARTS } from "./game";
+import { LEVEL_COUNT, LEVEL_NAMES } from "./levels";
 import { clearGame, loadGame, loadSettings, saveGame, saveSettings } from "./save";
 import { GameScene } from "./scene";
 import { isMuted, setMuted, sfx } from "./sound";
@@ -9,7 +11,7 @@ const TURN_SPEED = 2.6;
 const LOOK_SPEED = 1.6;
 const MOUSE_SENSITIVITY = 0.0022;
 
-type State = "loading" | "menu" | "playing" | "paused" | "options" | "help" | "dead" | "won" | "quit";
+type State = "loading" | "level-loading" | "menu" | "playing" | "paused" | "options" | "help" | "dead" | "won" | "quit";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = $<HTMLCanvasElement>("game");
@@ -28,12 +30,24 @@ const ui = {
   options: $("options"),
   help: $("help"),
   bossIntro: $("boss-intro"),
-  gameover: $("gameover"),
+  timekeeper: $("timekeeper"),
+  tkText: $("tk-text"),
+  weapon: $("weapon"),
+  weaponName: $("weapon-name"),
+  rewardCard: $("reward-card"),
   victory: $("victory"),
   quit: $("quit"),
   soundBtn: $("btn-sound"),
+  bossName: $("boss-name"),
+  introImg: $<HTMLImageElement>("intro-img"),
+  introSmall: $("intro-small"),
+  introBig: $("intro-big"),
+  victoryText: $("victory-text"),
+  nextBtn: $("btn-next"),
+  levelLoading: $("level-loading"),
+  levelLoadingTitle: $("level-loading-title"),
 };
-const overlays = [ui.pause, ui.options, ui.help, ui.gameover, ui.victory, ui.quit];
+const overlays = [ui.pause, ui.options, ui.help, ui.timekeeper, ui.victory, ui.quit, ui.levelLoading];
 
 const settings = loadSettings();
 setMuted(settings.muted);
@@ -102,24 +116,101 @@ function showHint(): void {
   hintTimeout = window.setTimeout(() => ui.hint.classList.add("faded"), 12000);
 }
 
+// ---------- Time Keeper ----------
+
+const TK_LINES = [
+  "Tick, tock… oh dear, that didn't go to plan!",
+  "Tick, tock… even heroes need a second go sometimes.",
+  "Tick, tock… don't worry, time is on your side!",
+];
+let typeTimer = 0;
+
+function showTimeKeeper(): void {
+  setState("dead");
+  show(ui.timekeeper);
+  const line = `${TK_LINES[Math.floor(Math.random() * TK_LINES.length)]} I am the Time Keeper, and I can turn back the clock to your last save. Would you like a second chance?`;
+  // Type the words out like a storybook character talking.
+  let i = 0;
+  ui.tkText.textContent = "";
+  window.clearInterval(typeTimer);
+  typeTimer = window.setInterval(() => {
+    i += 2;
+    ui.tkText.textContent = line.slice(0, i);
+    if (i >= line.length) window.clearInterval(typeTimer);
+  }, 25);
+  $("btn-tk-yes").focus();
+}
+
+// ---------- Sword ----------
+
+function updateWeapon(): void {
+  ui.weapon.hidden = !settings.flameSword;
+  ui.weapon.classList.toggle("flame", settings.flameEquipped);
+  ui.weaponName.textContent = settings.flameEquipped ? "🔥 Flaming Sword" : "⚔️ Sword";
+}
+
+function toggleSword(): void {
+  if (!settings.flameSword) return;
+  settings.flameEquipped = !settings.flameEquipped;
+  saveSettings(settings);
+  game.setFlameSword(settings.flameEquipped);
+  updateWeapon();
+  sfx.switchSword();
+  toast(settings.flameEquipped ? "🔥 Flaming Sword equipped!" : "⚔️ Back to your trusty sword.");
+}
+
 // ---------- Flow ----------
 
-function play(fresh: boolean): void {
-  sfx.click();
-  if (fresh) {
-    clearGame();
-    game.start(null);
-  } else {
-    const save = loadGame();
-    if (!save) {
-      toast("No saved adventure yet. Press Play!");
-      return;
-    }
-    game.start(save);
+/** Builds a level (if it isn't the current one) behind a loading card, then runs `then`. */
+function loadLevel(id: number, then: () => void): void {
+  if (game && game.level.id === id) {
+    then();
+    return;
   }
+  ui.levelLoadingTitle.textContent = `Level ${id}: ${LEVEL_NAMES[id] ?? ""}`;
+  setState("level-loading");
+  show(ui.levelLoading);
+  // Give the loading card a moment to paint before the level build.
+  window.setTimeout(() => {
+    game?.dispose();
+    game = new Game(gs, events, id);
+    game.setFlameSword(settings.flameSword && settings.flameEquipped);
+    then();
+  }, 60);
+}
+
+function enterPlaying(): void {
   show(null);
   setState("playing");
   showHint();
+}
+
+/** Starts a level from the beginning. */
+function playLevel(id: number): void {
+  sfx.click();
+  loadLevel(id, () => {
+    game.start(null);
+    saveGame(game.saveData());
+    enterPlaying();
+  });
+}
+
+function play(fresh: boolean): void {
+  if (fresh) {
+    clearGame();
+    playLevel(1);
+    return;
+  }
+  const save = loadGame();
+  if (!save) {
+    toast("No saved adventure yet. Press Play!");
+    return;
+  }
+  sfx.click();
+  loadLevel(save.level, () => {
+    game.start(save);
+    enterPlaying();
+  });
 }
 
 function pause(): void {
@@ -153,11 +244,15 @@ function toMenu(): void {
 
 const events = {
   health: renderHearts,
-  boss(hp: number | null, max: number) {
+  boss(hp: number | null, max: number, name: string) {
+    ui.bossName.textContent = name;
     ui.bossBar.hidden = hp === null;
     if (hp !== null) ui.bossFill.style.width = `${(hp / max) * 100}%`;
   },
-  bossIntro() {
+  bossIntro(intro: BossIntro) {
+    ui.introImg.src = intro.image;
+    ui.introSmall.textContent = intro.subtitle;
+    ui.introBig.textContent = intro.title;
     ui.bossIntro.hidden = false;
     window.setTimeout(() => (ui.bossIntro.hidden = true), 2600);
   },
@@ -170,13 +265,25 @@ const events = {
     saveGame(game.saveData());
   },
   died() {
-    window.setTimeout(() => {
-      setState("dead");
-      show(ui.gameover);
-    }, 1300);
+    window.setTimeout(showTimeKeeper, 1300);
+  },
+  reward() {
+    settings.flameSword = true;
+    saveSettings(settings);
+    updateWeapon();
+    ui.rewardCard.hidden = false;
+    window.setTimeout(() => (ui.rewardCard.hidden = true), 3800);
   },
   won() {
-    clearGame();
+    const id = game.level.id;
+    const hasNext = id < LEVEL_COUNT;
+    if (hasNext) saveGame({ level: id + 1, checkpoint: 0, hearts: MAX_HEARTS, defeatedZombies: [], heartsTaken: [], bossesDefeated: 0 });
+    else clearGame();
+    ui.victoryText.textContent =
+      id === 1
+        ? "You defeated the Rotten Potato and saved Moonlit Hollow! Next stop: the Colosseum."
+        : "You beat Sam the Bad Man, the Blood Box and Fire Rose, and won the Flaming Sword! Press F to swap swords in any level.";
+    ui.nextBtn.hidden = !hasNext;
     setState("won");
     show(ui.victory);
   },
@@ -225,25 +332,41 @@ ui.soundBtn.addEventListener("click", () => {
   updateSoundButton();
   sfx.click();
 });
-$("btn-retry").addEventListener("click", () => {
-  sfx.click();
-  game.respawn();
-  show(null);
-  setState("playing");
+$("btn-tk-yes").addEventListener("click", () => {
+  if (state !== "dead" || ui.timekeeper.classList.contains("rewinding")) return;
+  // Turn back time: the clock spins backwards, then you're back at your last save.
+  sfx.rewind();
+  ui.timekeeper.classList.add("rewinding");
+  window.setTimeout(() => {
+    game.respawn();
+    ui.timekeeper.classList.remove("rewinding");
+    show(null);
+    setState("playing");
+    toast("⏳ Time turned back! Have another go!");
+  }, 1600);
 });
-$("btn-gameover-menu").addEventListener("click", toMenu);
-$("btn-again").addEventListener("click", () => play(true));
+$("btn-tk-no").addEventListener("click", () => {
+  if (state === "dead" && !ui.timekeeper.classList.contains("rewinding")) toMenu();
+});
+$("btn-again").addEventListener("click", () => playLevel(game.level.id));
+ui.nextBtn.addEventListener("click", () => playLevel(game.level.id + 1));
+for (let id = 1; id <= LEVEL_COUNT; id++) {
+  $(`btn-level-${id}`).addEventListener("click", () => {
+    if (state === "options") playLevel(id);
+  });
+}
 $("btn-victory-menu").addEventListener("click", toMenu);
 
 // ---------- Input ----------
 
-const GAME_KEYS = new Set(["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "KeyJ", "KeyK"]);
+const GAME_KEYS = new Set(["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "KeyJ", "KeyK", "KeyF"]);
 
 window.addEventListener("keydown", (e) => {
   if (state === "playing") {
     if (GAME_KEYS.has(e.code)) e.preventDefault();
     keys.add(e.code);
     if (e.code === "KeyJ" && !e.repeat) game.attack();
+    if (e.code === "KeyF" && !e.repeat) toggleSword();
     if ((e.code === "Escape" || e.code === "KeyP") && !e.repeat) pause();
   } else if (state === "paused" && (e.code === "Escape" || e.code === "KeyP") && !e.repeat) {
     resume();
@@ -314,7 +437,7 @@ function frame(now: number): void {
   }
 
   // The menu artwork covers the whole screen, so skip drawing the world behind it.
-  if (game && state !== "menu" && state !== "loading" && state !== "quit") {
+  if (game && state !== "menu" && state !== "loading" && state !== "level-loading" && state !== "quit") {
     game.player.eye(gs.camera.position);
     gs.camera.rotation.set(game.player.pitch, game.player.yaw, 0);
     gs.update(dt);
@@ -329,11 +452,24 @@ renderHearts(MAX_HEARTS);
 setState("loading");
 // Let the menu art paint before the (slightly slow) level build.
 window.setTimeout(() => {
-  game = new Game(gs, events);
+  game = new Game(gs, events, 1);
+  game.setFlameSword(settings.flameSword && settings.flameEquipped);
+  updateWeapon();
   ui.loading.hidden = true;
   setState("menu");
 
   // Development-only hook so the game can be driven by automated checks.
-  if (import.meta.env.DEV) Object.assign(window, { __game: { game, keys, getState: () => state } });
+  if (import.meta.env.DEV) {
+    Object.assign(window, {
+      __game: {
+        get game() {
+          return game;
+        },
+        keys,
+        getState: () => state,
+        playLevel,
+      },
+    });
+  }
 }, 50);
 requestAnimationFrame(frame);

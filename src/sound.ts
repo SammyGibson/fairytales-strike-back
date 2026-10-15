@@ -78,6 +78,40 @@ export const sfx = {
     tone("square", 90, 40, 1.1, 0.12);
   },
   bossHurt: () => tone("sawtooth", 260, 120, 0.25, 0.14),
+  stomp: () => {
+    tone("sine", 90, 40, 0.25, 0.25);
+    noise(0.15, 0.2, "lowpass", 500, 120);
+  },
+  charge: () => {
+    tone("sawtooth", 160, 640, 1, 0.07);
+    tone("sine", 220, 880, 1, 0.06);
+  },
+  fireball: () => {
+    noise(0.35, 0.3, "bandpass", 1600, 300);
+    tone("sawtooth", 300, 120, 0.3, 0.05);
+  },
+  squish: () => {
+    tone("sine", 320, 90, 0.18, 0.18);
+    noise(0.12, 0.15, "lowpass", 800, 200);
+  },
+  slam: () => {
+    tone("sine", 70, 30, 0.6, 0.35);
+    noise(0.4, 0.35, "lowpass", 700, 80);
+  },
+  door: () => {
+    tone("sawtooth", 55, 40, 2.2, 0.12);
+    noise(2.2, 0.18, "lowpass", 300, 90);
+  },
+  blink: () => [1200, 1600, 2000].forEach((f, i) => tone("sine", f, f * 1.2, 0.12, 0.06, i * 0.05)),
+  rewind: () => {
+    for (let i = 0; i < 10; i++) tone("square", 1400 - i * 90, 1300 - i * 90, 0.05, 0.05, i * 0.13);
+    tone("sine", 900, 200, 1.4, 0.08);
+  },
+  reward: () => [523, 784, 1047, 1319].forEach((f, i) => tone("triangle", f, f, 0.3, 0.13, i * 0.12)),
+  switchSword: () => {
+    noise(0.2, 0.2, "bandpass", 800, 3000);
+    tone("triangle", 600, 900, 0.15, 0.08);
+  },
   pickup: () => {
     tone("sine", 660, 660, 0.1, 0.14);
     tone("sine", 990, 990, 0.16, 0.14, 0.09);

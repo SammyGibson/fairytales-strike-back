@@ -8,9 +8,18 @@ export type SaveData = {
   hearts: number;
   defeatedZombies: number[];
   heartsTaken: number[];
+  /** Bosses beaten so far in the current level's line-up. */
+  bossesDefeated: number;
 };
 
-export type Settings = { muted: boolean };
+export type Settings = {
+  muted: boolean;
+  /** Earned by beating Fire Rose; kept across levels and new games. */
+  flameSword: boolean;
+  flameEquipped: boolean;
+};
+
+const DEFAULT_SETTINGS: Settings = { muted: false, flameSword: false, flameEquipped: false };
 
 export function loadGame(): SaveData | null {
   try {
@@ -24,6 +33,7 @@ export function loadGame(): SaveData | null {
       hearts: typeof data.hearts === "number" ? data.hearts : 6,
       defeatedZombies: data.defeatedZombies.filter((n): n is number => typeof n === "number"),
       heartsTaken: Array.isArray(data.heartsTaken) ? data.heartsTaken.filter((n): n is number => typeof n === "number") : [],
+      bossesDefeated: typeof data.bossesDefeated === "number" ? data.bossesDefeated : 0,
     };
   } catch {
     return null;
@@ -49,11 +59,11 @@ export function clearGame(): void {
 export function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) return { muted: false, ...(JSON.parse(raw) as Partial<Settings>) };
+    if (raw) return { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<Settings>) };
   } catch {
     // Fall through to defaults.
   }
-  return { muted: false };
+  return { ...DEFAULT_SETTINGS };
 }
 
 export function saveSettings(settings: Settings): void {

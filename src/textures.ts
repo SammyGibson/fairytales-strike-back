@@ -5,7 +5,7 @@ import { mulberry32 } from "./noise";
 // All block art is drawn in code as 16x16 pixel tiles packed into one atlas.
 export const TILE = 16;
 export const ATLAS_COLS = 8;
-export const ATLAS_ROWS = 3;
+export const ATLAS_ROWS = 4;
 
 export type RGB = [number, number, number];
 
@@ -123,6 +123,16 @@ export function buildAtlas(): Atlas {
     const border = x === 0 || x === TILE - 1;
     return mul(border ? [120, 26, 30] : [184, 40, 44], j(0.12));
   });
+
+  paint(T.SAND, () => mul([214, 192, 142], rand() < 0.1 ? 0.82 : j(0.14)));
+  paint(T.SANDSTONE, (_x, y) => mul([222, 204, 164], (y % 5 === 4 ? 0.9 : 1) * j(0.08)));
+  paint(T.SANDBRICK, (x, y) => {
+    const row = Math.floor(y / 4);
+    const mortar = y % 4 === 3 || (x + (row % 2) * 4) % 8 === 7;
+    return mortar ? mul([168, 148, 112], j(0.08)) : mul([216, 196, 154], j(0.12));
+  });
+  paint(T.PILLAR, (x) => mul([228, 212, 176], (x % 4 === 0 ? 0.78 : x % 4 === 1 ? 0.92 : 1) * j(0.05)));
+  paint(T.TERRACOTTA, () => mul([178, 88, 58], j(0.14)));
 
   ctx.putImageData(img, 0, 0);
 

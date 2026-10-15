@@ -334,6 +334,11 @@ kbd {
   line-height: 1.35;
 }
 
+.lead.small {
+  margin: 6px 0 -4px;
+  font-size: 19px;
+}
+
 .buttons {
   display: flex;
   flex-direction: column;
@@ -451,4 +456,216 @@ kbd {
 @media (max-height: 720px) {
   .panel h2 { font-size: 44px; }
   .btn { font-size: 24px; padding: 12px 18px; }
+}
+
+/* ---------- Sword badge and reward card ---------- */
+
+#weapon {
+  position: fixed;
+  right: 18px;
+  bottom: 22px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 3px solid rgba(0, 0, 0, 0.6);
+  border-radius: 14px;
+  background: rgba(10, 8, 24, 0.6);
+  font-size: 18px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+#weapon.flame {
+  border-color: #ff8a2a;
+  box-shadow: 0 0 18px rgba(255, 120, 30, 0.6);
+}
+
+.weapon-hint {
+  font-size: 15px;
+  opacity: 0.8;
+}
+
+#reward-card {
+  position: fixed;
+  left: 50%;
+  top: 22%;
+  z-index: 30;
+  transform: translateX(-50%);
+  padding: 22px 40px 26px;
+  border: 5px solid var(--ink);
+  border-radius: 22px;
+  background: linear-gradient(#5a2412, #2a1008);
+  box-shadow: 0 0 0 3px #ff8a2a, 0 0 70px rgba(255, 120, 30, 0.7);
+  text-align: center;
+  pointer-events: none;
+  animation: reward-in 0.5s ease-out;
+}
+
+.reward-glow {
+  font-size: 54px;
+  animation: reward-bob 1s ease-in-out infinite alternate;
+}
+
+.reward-small {
+  font-size: 22px;
+  font-weight: 700;
+  color: #ffd27a;
+}
+
+.reward-big {
+  font-family: var(--title);
+  font-size: 50px;
+  color: #ffb347;
+  text-shadow: 0 4px 0 var(--ink), 0 0 20px rgba(255, 140, 40, 0.8);
+}
+
+.reward-text {
+  margin-top: 6px;
+  font-size: 22px;
+}
+
+@keyframes reward-in {
+  from { transform: translateX(-50%) scale(0.5); opacity: 0; }
+  to { transform: translateX(-50%) scale(1); opacity: 1; }
+}
+
+@keyframes reward-bob {
+  from { transform: translateY(0); }
+  to { transform: translateY(-8px); }
+}
+
+/* ---------- The Time Keeper ---------- */
+
+.overlay.tk {
+  place-items: end center;
+  padding-bottom: 40px;
+  background: radial-gradient(ellipse at center, rgba(40, 220, 140, 0.18), rgba(4, 30, 22, 0.78));
+}
+
+.tk-clock {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  width: min(54vh, 70vw);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border: 10px solid #c9a24a;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(232, 222, 190, 0.22), rgba(40, 220, 140, 0.12));
+  box-shadow: 0 0 60px rgba(60, 255, 160, 0.55), inset 0 0 40px rgba(60, 255, 160, 0.4);
+  opacity: 0.85;
+}
+
+.tk-numerals span {
+  position: absolute;
+  font-family: var(--title);
+  font-size: clamp(22px, 4vh, 40px);
+  color: #f2e2b0;
+  text-shadow: 0 0 10px rgba(60, 255, 160, 0.9);
+}
+
+.tk-numerals span:nth-child(1) { top: 4%; left: 50%; transform: translateX(-50%); }
+.tk-numerals span:nth-child(2) { right: 5%; top: 50%; transform: translateY(-50%); }
+.tk-numerals span:nth-child(3) { bottom: 4%; left: 50%; transform: translateX(-50%); }
+.tk-numerals span:nth-child(4) { left: 5%; top: 50%; transform: translateY(-50%); }
+
+.tk-hand {
+  position: absolute;
+  left: 50%;
+  bottom: 50%;
+  width: 12px;
+  margin-left: -6px;
+  border-radius: 6px;
+  background: #1a120c;
+  box-shadow: 0 0 10px rgba(60, 255, 160, 0.8);
+  transform-origin: 50% 100%;
+}
+
+.tk-hand.hour { height: 26%; animation: tick 12s steps(12) infinite; }
+.tk-hand.minute { height: 38%; width: 8px; margin-left: -4px; animation: tick 3s steps(60) infinite; }
+
+@keyframes tick {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Turning back time: the hands race backwards and everything flashes green. */
+.overlay.tk.rewinding .tk-hand.hour { animation: rewind 1.6s ease-in forwards; }
+.overlay.tk.rewinding .tk-hand.minute { animation: rewind-fast 1.6s ease-in forwards; }
+.overlay.tk.rewinding .tk-clock { animation: clock-grow 1.6s ease-in forwards; }
+.overlay.tk.rewinding .dialog { opacity: 0; transform: translateY(40px); }
+
+@keyframes rewind { to { transform: rotate(-720deg); } }
+@keyframes rewind-fast { to { transform: rotate(-4320deg); } }
+@keyframes clock-grow {
+  60% { opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(3); opacity: 0; box-shadow: 0 0 200px rgba(60, 255, 160, 1); }
+}
+
+.dialog {
+  position: relative;
+  display: flex;
+  gap: 20px;
+  width: min(880px, 100%);
+  padding: 18px;
+  border: 5px solid var(--ink);
+  border-radius: 22px;
+  background: linear-gradient(#2c2620, #1a1612);
+  box-shadow: inset 0 0 0 3px #c9a24a, 0 10px 0 var(--ink), 0 0 50px rgba(60, 255, 160, 0.45);
+  text-align: left;
+  transition: opacity 0.4s, transform 0.4s;
+  animation: dialog-in 0.5s ease-out;
+}
+
+@keyframes dialog-in {
+  from { opacity: 0; transform: translateY(60px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.dialog .portrait {
+  flex-shrink: 0;
+  width: 150px;
+  height: 150px;
+  border: 4px solid #c9a24a;
+  border-radius: 16px;
+  object-fit: cover;
+  box-shadow: 0 0 24px rgba(60, 255, 160, 0.6);
+}
+
+.dialog-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.speaker {
+  font-family: var(--title);
+  font-size: 30px;
+  color: #7dffbd;
+  text-shadow: 0 3px 0 var(--ink);
+}
+
+#tk-text {
+  min-height: 3.6em;
+  margin: 6px 0 14px;
+  font-size: 22px;
+  line-height: 1.4;
+}
+
+.dialog-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.dialog-buttons .btn {
+  width: auto;
+  font-size: 22px;
+  padding: 12px 18px;
+}
+
+@media (max-width: 640px) {
+  .dialog { flex-direction: column; align-items: center; text-align: center; }
+  .dialog-buttons { justify-content: center; }
 }
